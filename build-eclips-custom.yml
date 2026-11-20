@@ -1,0 +1,2400 @@
+name: Build EclipsCustom
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Generate project files
+        run: |
+          set -e
+          mkdir -p "$(dirname 'pom.xml')"
+          cat > 'pom.xml' <<'EOF_POM'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>ru.eclips</groupId>
+            <artifactId>EclipsCustom</artifactId>
+            <version>1.0.0</version>
+            <packaging>jar</packaging>
+            <properties>
+              <maven.compiler.source>17</maven.compiler.source>
+              <maven.compiler.target>17</maven.compiler.target>
+              <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+              <nk.group>cn.nukkit</nk.group>
+              <nk.artifact>Nukkit</nk.artifact>
+              <nk.version>MOT-SNAPSHOT</nk.version>
+            </properties>
+            <repositories>
+              <repository>
+                <id>lanink</id>
+                <url>https://repo.lanink.cn/repository/maven-public/</url>
+              </repository>
+              <repository>
+                <id>opencollab-snapshot</id>
+                <url>https://repo.opencollab.dev/maven-snapshots/</url>
+              </repository>
+              <repository>
+                <id>opencollab-release</id>
+                <url>https://repo.opencollab.dev/maven-releases/</url>
+              </repository>
+            </repositories>
+            <dependencies>
+              <dependency>
+                <groupId>${nk.group}</groupId>
+                <artifactId>${nk.artifact}</artifactId>
+                <version>${nk.version}</version>
+                <scope>provided</scope>
+              </dependency>
+            </dependencies>
+            <build>
+              <finalName>EclipsCustom</finalName>
+              <plugins>
+                <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-compiler-plugin</artifactId>
+                  <version>3.11.0</version>
+                  <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <encoding>UTF-8</encoding>
+                  </configuration>
+                </plugin>
+              </plugins>
+            </build>
+          </project>
+          EOF_POM
+          mkdir -p "$(dirname 'src/main/resources/plugin.yml')"
+          cat > 'src/main/resources/plugin.yml' <<'EOF_PLUGIN'
+          name: EclipsCustom
+          main: ru.eclips.custom.EclipsCustom
+          version: 1.0.0
+          api: ["1.0.0"]
+          author: Eclips
+          description: Кастомные крафты (ТНТ, элитры) и кристаллы
+          commands:
+            custom:
+              description: "Кастомные крафты"
+              usage: "/custom"
+              permission: eclips.custom.use
+            customg:
+              description: "Админ-меню кастом предметов"
+              usage: "/customg"
+              permission: eclips.custom.admin
+          permissions:
+            eclips.custom.use:
+              description: "Открывать список кастом крафтов"
+              default: true
+            eclips.custom.admin:
+              description: "Выдача кастом предметов, /customg, /custom give, /custom reload"
+              default: op
+          EOF_PLUGIN
+          mkdir -p "$(dirname 'src/main/resources/config.yml')"
+          cat > 'src/main/resources/config.yml' <<'EOF_CONFIG'
+          # ============================================================
+          #  EclipsCustom: кастомные крафты (/custom) и выдача (/customg)
+          #  Цвета в текстах: & и код (&9 синий, &d розовый, &l жирный, &r сброс).
+          #  После изменений: /custom reload (текстуры применяются после рестарта).
+          # ============================================================
+
+          # ---------------- Взрывы ----------------
+          settings:
+            # Шанс (в процентах) сломать КАЖДЫЙ открытый блок обсидиана в радиусе взрыва
+            # (ТНТ разрушитель и подводный ТНТ).
+            obsidian-chance: 15
+            # Радиус обычного ТНТ (для обсидиана и подводных блоков).
+            tnt-radius: 4
+            # Огненный ТНТ: во сколько раз больше радиус взрыва.
+            fire-multiplier: 2.0
+            # Огненный ТНТ: шанс (%) поджечь подходящее место вокруг взрыва.
+            fire-chance: 35
+            # Огненный ТНТ: максимум блоков огня за один взрыв.
+            fire-max-blocks: 300
+            # Огненный ТНТ: сколько секунд горят существа рядом с взрывом.
+            fire-entity-seconds: 6
+            # Огненный ТНТ: через сколько тиков после взрыва ставится огонь.
+            fire-delay-ticks: 2
+            # Подводный ТНТ: радиус разрушения блоков под водой.
+            underwater-radius: 4
+            # Админ-меню /customg: сколько штук выдаётся при клике с приседанием.
+            admin-sneak-amount: 16
+
+          # ---------------- Названия меню ----------------
+          menu:
+            list-title: "&l&9Кастом крафты"
+            recipe-title: "&l&9Рецепт крафта"
+            admin-title: "&l&9Кастом предметы (админ)"
+
+          # ---------------- Текстуры ----------------
+          textures:
+            # Создавать заглушки PNG в plugins/EclipsCustom/textures/ (уже существующие файлы не трогаются).
+            enabled: true
+            # Собирать ресурспак в папку сервера resource_packs/ (после первого создания нужен рестарт).
+            build-pack: true
+            pack-file: "EclipsCustom.zip"
+            # Пробовать зарегистрировать кристаллы как настоящие кастом-предметы с текстурами.
+            # Если ядро или сборка это не поддерживают, кристаллы будут обычными предметами-основами.
+            custom-items: true
+
+          # ---------------- Предметы ----------------
+          # kind: breaker (разрушитель), underwater (подводный), fire (огненный), crystal (кристалл)
+          # base-item: "имя|запасной id[:meta]". Если имя не подошло, берётся запасной id.
+          # texture: имя файла textures/<texture>.png. Чтобы поставить свою текстуру, замени этот PNG
+          #          и перезапусти сервер. Имена текстур кристаллов не меняй, меняй только сам PNG.
+          # texture-color: цвет заглушки.
+          # custom-id: id настоящего кастом-предмета (только для кристаллов), не меняй.
+          # Текстуры ТНТ пока не используются: они появятся, когда будет выбран способ их показа.
+          items:
+            tnt_breaker:
+              kind: breaker
+              name: "&l&9ТНТ разрушитель"
+              base-item: "minecraft:tnt|46"
+              texture: "eclips_tnt_breaker"
+              texture-color: "#D32F2F"
+              lore:
+                - "&9Взрыв с шансом {chance}% ломает обсидиан."
+                - "&9Крафтится из ТНТ и кристалла разрушителя."
+
+            tnt_underwater:
+              kind: underwater
+              name: "&l&9Подводный ТНТ"
+              base-item: "minecraft:tnt|46"
+              texture: "eclips_tnt_underwater"
+              texture-color: "#1976D2"
+              lore:
+                - "&9Взрывается и наносит урон под водой."
+                - "&9Ломает блоки под водой."
+                - "&9С шансом {chance}% ломает обсидиан."
+                - "&9Крафтится из ТНТ и кристалла воды."
+
+            tnt_fire:
+              kind: fire
+              name: "&l&9Огненный ТНТ"
+              base-item: "minecraft:tnt|46"
+              texture: "eclips_tnt_fire"
+              texture-color: "#F57C00"
+              lore:
+                - "&9Радиус взрыва x{multiplier}."
+                - "&9Поджигает всё вокруг взрыва."
+                - "&9Крафтится из ТНТ и кристалла огня."
+
+            crystal_breaker:
+              kind: crystal
+              name: "&l&dКристалл разрушителя"
+              base-item: "minecraft:amethyst_shard|388"
+              custom-id: "eclips:crystal_breaker"
+              texture: "eclips_crystal_breaker"
+              texture-color: "#D81B60"
+              lore:
+                - "&dКристалл разрушителя подходит"
+                - "&dдля крафта ТНТ разрушителя."
+
+            crystal_water:
+              kind: crystal
+              name: "&l&dКристалл воды"
+              base-item: "minecraft:prismarine_crystals|422"
+              custom-id: "eclips:crystal_water"
+              texture: "eclips_crystal_water"
+              texture-color: "#039BE5"
+              lore:
+                - "&dКристалл воды подходит"
+                - "&dдля крафта подводного ТНТ."
+
+            crystal_fire:
+              kind: crystal
+              name: "&l&dКристалл огня"
+              base-item: "minecraft:fire_charge|385"
+              custom-id: "eclips:crystal_fire"
+              texture: "eclips_crystal_fire"
+              texture-color: "#FB8C00"
+              lore:
+                - "&dКристалл огня подходит"
+                - "&dдля крафта огненного ТНТ."
+
+          # ---------------- Рецепты ----------------
+          # shape: 3 строки по 3 символа (пробел = пустая клетка).
+          # ingredients: символ -> "custom:<id предмета из items>" или "имя|запасной id".
+          # Крафт выполняется кнопкой в меню: ингредиенты берутся из инвентаря игрока.
+          recipes:
+            tnt_breaker:
+              result: "custom:tnt_breaker"
+              amount: 1
+              shape:
+                - "   "
+                - " ab"
+                - "   "
+              ingredients:
+                a: "minecraft:tnt|46"
+                b: "custom:crystal_breaker"
+
+            tnt_underwater:
+              result: "custom:tnt_underwater"
+              amount: 1
+              shape:
+                - "   "
+                - " ab"
+                - "   "
+              ingredients:
+                a: "minecraft:tnt|46"
+                b: "custom:crystal_water"
+
+            tnt_fire:
+              result: "custom:tnt_fire"
+              amount: 1
+              shape:
+                - "   "
+                - " ab"
+                - "   "
+              ingredients:
+                a: "minecraft:tnt|46"
+                b: "custom:crystal_fire"
+
+            elytra:
+              result: "minecraft:elytra|444"
+              amount: 1
+              shape:
+                - "a a"
+                - "aba"
+                - "a a"
+              ingredients:
+                a: "minecraft:feather|288"
+                b: "minecraft:nether_star|399"
+          EOF_CONFIG
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/EclipsCustom.java')"
+          cat > 'src/main/java/ru/eclips/custom/EclipsCustom.java' <<'EOF_ECLIPSCUSTOM'
+          package ru.eclips.custom;
+
+          import cn.nukkit.Player;
+          import cn.nukkit.command.Command;
+          import cn.nukkit.command.CommandSender;
+          import cn.nukkit.item.Item;
+          import cn.nukkit.plugin.PluginBase;
+          import cn.nukkit.scheduler.PluginTask;
+
+          import java.lang.reflect.Method;
+          import java.util.Collections;
+          import java.util.HashMap;
+          import java.util.List;
+          import java.util.Map;
+
+          /**
+           * EclipsCustom: кастомные крафты (/custom) и админ-меню предметов (/customg).
+           */
+          public class EclipsCustom extends PluginBase {
+
+              private ItemRegistry items;
+              private MenuManager menus;
+              private PlacedStore store;
+              private TntListener tnt;
+              private final Map<String, Class<?>> customClasses = new HashMap<>();
+              private boolean customActive = false;
+
+              public ItemRegistry items() {
+                  return items;
+              }
+
+              public MenuManager menus() {
+                  return menus;
+              }
+
+              public PlacedStore store() {
+                  return store;
+              }
+
+              public boolean isCustomActive() {
+                  return customActive;
+              }
+
+              public Class<?> customClass(String id) {
+                  return customClasses.get(id);
+              }
+
+              @Override
+              public void onLoad() {
+                  try {
+                      saveDefaultConfig();
+                  } catch (Throwable ignored) {
+                  }
+                  try {
+                      new TexturePack(this).prepare();
+                  } catch (Throwable t) {
+                      getLogger().warning("Textures: " + t);
+                  }
+                  try {
+                      registerCustomItems();
+                  } catch (Throwable t) {
+                      getLogger().warning("Custom items: " + t);
+                  }
+              }
+
+              /**
+               * Пробуем зарегистрировать кристаллы как настоящие кастом-предметы (с текстурами).
+               * Если в сборке нет нужных классов или ядро не поддерживает, остаются базовые предметы.
+               */
+              private void registerCustomItems() {
+                  if (!getConfig().getBoolean("textures.custom-items", true)) {
+                      return;
+                  }
+                  String[][] pairs = {
+                          {"eclips:crystal_breaker", "CrystalBreakerItem"},
+                          {"eclips:crystal_fire", "CrystalFireItem"},
+                          {"eclips:crystal_water", "CrystalWaterItem"}
+                  };
+                  int ok = 0;
+                  for (String[] p : pairs) {
+                      try {
+                          Class<?> c = Class.forName("ru.eclips.custom.ci." + p[1]);
+                          if (invokeRegister(c)) {
+                              customClasses.put(p[0], c);
+                              ok++;
+                          }
+                      } catch (Throwable ignored) {
+                      }
+                  }
+                  customActive = ok > 0;
+              }
+
+              private boolean invokeRegister(Class<?> c) {
+                  for (Method m : Item.class.getMethods()) {
+                      if (!m.getName().equals("registerCustomItem") || m.getParameterCount() != 1) {
+                          continue;
+                      }
+                      try {
+                          Class<?> pt = m.getParameterTypes()[0];
+                          Object res;
+                          if (pt == Class.class) {
+                              res = m.invoke(null, c);
+                          } else if (List.class.isAssignableFrom(pt)) {
+                              res = m.invoke(null, Collections.singletonList(c));
+                          } else {
+                              continue;
+                          }
+                          if (res != null) {
+                              try {
+                                  Object okv = res.getClass().getMethod("ok").invoke(res);
+                                  if (okv instanceof Boolean) {
+                                      return (Boolean) okv;
+                                  }
+                              } catch (Throwable ignored) {
+                              }
+                          }
+                          return true;
+                      } catch (Throwable ignored) {
+                      }
+                  }
+                  return false;
+              }
+
+              @Override
+              public void onEnable() {
+                  try {
+                      saveDefaultConfig();
+                  } catch (Throwable ignored) {
+                  }
+                  store = new PlacedStore(this);
+                  store.load();
+                  items = new ItemRegistry(this);
+                  items.load(getConfig());
+                  menus = new MenuManager(this);
+                  getServer().getPluginManager().registerEvents(new MenuListener(this), this);
+                  tnt = new TntListener(this);
+                  getServer().getPluginManager().registerEvents(tnt, this);
+                  tnt.hookPrimeEvent();
+                  try {
+                      getServer().getScheduler().scheduleRepeatingTask(new PluginTask<EclipsCustom>(this) {
+                          @Override
+                          public void onRun(int currentTick) {
+                              store.saveIfDirty();
+                              tnt.cleanup();
+                          }
+                      }, 600);
+                  } catch (Throwable ignored) {
+                  }
+                  getLogger().info("EclipsCustom: рецептов " + items.recipes().size() + ", предметов " + items.defs().size()
+                          + ", кастом-предметы с текстурами: " + (customActive ? "ВКЛ" : "выкл")
+                          + ", усиление огненного ТНТ: " + (tnt.isPrimeHooked() ? "штатно" : "запасной вариант"));
+              }
+
+              @Override
+              public void onDisable() {
+                  try {
+                      if (store != null) {
+                          store.saveNow();
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              public boolean isAdmin(CommandSender s) {
+                  if (!(s instanceof Player)) {
+                      return true;
+                  }
+                  return s.hasPermission("eclips.custom.admin") || s.isOp();
+              }
+
+              /** Выдаёт кастом-предмет игроку; что не влезло, падает на землю. */
+              public boolean giveTo(Player target, String id, int amount) {
+                  Item it = items.build(id, Math.max(1, amount));
+                  if (it == null) {
+                      return false;
+                  }
+                  Item[] left = target.getInventory().addItem(it);
+                  if (left != null) {
+                      for (Item l : left) {
+                          if (l != null && !l.isNull()) {
+                              target.getLevel().dropItem(target, l);
+                          }
+                      }
+                  }
+                  return true;
+              }
+
+              @Override
+              public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+                  String name = command.getName().toLowerCase();
+
+                  if (name.equals("customg")) {
+                      if (!isAdmin(sender)) {
+                          sender.sendMessage(ItemUtil.c("&l&cУ тебя нет прав на эту команду."));
+                          return true;
+                      }
+                      if (!(sender instanceof Player)) {
+                          sender.sendMessage("Эту команду можно использовать только в игре.");
+                          return true;
+                      }
+                      menus.openAdmin((Player) sender);
+                      return true;
+                  }
+
+                  if (!name.equals("custom")) {
+                      return false;
+                  }
+
+                  if (args.length == 0 || !isAdmin(sender)) {
+                      if (sender instanceof Player) {
+                          menus.openList((Player) sender);
+                      } else {
+                          sender.sendMessage("Эту команду можно использовать только в игре.");
+                      }
+                      return true;
+                  }
+
+                  String sub = args[0].toLowerCase();
+                  if (sub.equals("reload")) {
+                      try {
+                          reloadConfig();
+                          items.load(getConfig());
+                          sender.sendMessage(ItemUtil.c("&l&aEclipsCustom: настройки перезагружены."));
+                      } catch (Throwable t) {
+                          sender.sendMessage(ItemUtil.c("&l&cНе получилось перезагрузить настройки."));
+                      }
+                      return true;
+                  }
+
+                  if (sub.equals("give")) {
+                      if (args.length < 3) {
+                          sender.sendMessage(ItemUtil.c("&9Использование: /custom give <игрок> <предмет> [кол-во]"));
+                          StringBuilder sb = new StringBuilder();
+                          for (ItemDef d : items.defs()) {
+                              if (sb.length() > 0) {
+                                  sb.append(", ");
+                              }
+                              sb.append(d.id);
+                          }
+                          sender.sendMessage(ItemUtil.c("&9Предметы: " + sb));
+                          return true;
+                      }
+                      Player target = getServer().getPlayer(args[1]);
+                      if (target == null) {
+                          sender.sendMessage(ItemUtil.c("&l&cИгрок не найден."));
+                          return true;
+                      }
+                      int amount = 1;
+                      if (args.length > 3) {
+                          try {
+                              amount = Math.max(1, Math.min(2304, Integer.parseInt(args[3])));
+                          } catch (NumberFormatException ex) {
+                              amount = 1;
+                          }
+                      }
+                      if (giveTo(target, args[2].toLowerCase(), amount)) {
+                          sender.sendMessage(ItemUtil.c("&l&aВыдано: &r&9" + args[2] + " x" + amount + " игроку " + target.getName()));
+                      } else {
+                          sender.sendMessage(ItemUtil.c("&l&cТакого предмета нет."));
+                      }
+                      return true;
+                  }
+
+                  if (sender instanceof Player) {
+                      menus.openList((Player) sender);
+                  }
+                  return true;
+              }
+          }
+          EOF_ECLIPSCUSTOM
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/ItemDef.java')"
+          cat > 'src/main/java/ru/eclips/custom/ItemDef.java' <<'EOF_ITEMDEF'
+          package ru.eclips.custom;
+
+          import java.util.ArrayList;
+          import java.util.List;
+
+          /**
+           * Описание кастом-предмета из config.yml (раздел items).
+           */
+          public class ItemDef {
+
+              public String id;
+              /** breaker, underwater, fire или crystal. */
+              public String kind = "crystal";
+              public String name = "";
+              /** Базовый предмет, например "minecraft:tnt|46". */
+              public String base = "";
+              /** Id настоящего кастом-предмета (если удалось зарегистрировать), например "eclips:crystal_breaker". */
+              public String customId = "";
+              public String texture = "";
+              public List<String> lore = new ArrayList<>();
+
+              public boolean isTnt() {
+                  return "breaker".equals(kind) || "underwater".equals(kind) || "fire".equals(kind);
+              }
+          }
+          EOF_ITEMDEF
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/ItemRegistry.java')"
+          cat > 'src/main/java/ru/eclips/custom/ItemRegistry.java' <<'EOF_ITEMREGISTRY'
+          package ru.eclips.custom;
+
+          import cn.nukkit.item.Item;
+          import cn.nukkit.utils.Config;
+          import cn.nukkit.utils.ConfigSection;
+
+          import java.util.Collection;
+          import java.util.HashMap;
+          import java.util.LinkedHashMap;
+          import java.util.List;
+          import java.util.Map;
+
+          /**
+           * Хранит кастом-предметы и рецепты, читает их из config.yml.
+           */
+          public class ItemRegistry {
+
+              private final EclipsCustom plugin;
+              private final Map<String, ItemDef> defs = new LinkedHashMap<>();
+              private final Map<String, RecipeDef> recipes = new LinkedHashMap<>();
+
+              public ItemRegistry(EclipsCustom plugin) {
+                  this.plugin = plugin;
+              }
+
+              public void load(Config cfg) {
+                  defs.clear();
+                  recipes.clear();
+
+                  ConfigSection items = cfg.getSection("items");
+                  if (items != null) {
+                      for (String id : items.getKeys(false)) {
+                          try {
+                              ConfigSection s = items.getSection(id);
+                              if (s == null) {
+                                  continue;
+                              }
+                              ItemDef d = new ItemDef();
+                              d.id = id;
+                              d.kind = s.getString("kind", "crystal");
+                              d.name = s.getString("name", id);
+                              d.base = s.getString("base-item", "minecraft:stone|1");
+                              d.customId = s.getString("custom-id", "");
+                              d.texture = s.getString("texture", "");
+                              d.lore = s.getStringList("lore");
+                              defs.put(id, d);
+                          } catch (Throwable ignored) {
+                          }
+                      }
+                  }
+
+                  ConfigSection rs = cfg.getSection("recipes");
+                  if (rs != null) {
+                      for (String id : rs.getKeys(false)) {
+                          try {
+                              RecipeDef r = readRecipe(id, rs.getSection(id));
+                              if (r != null) {
+                                  recipes.put(id, r);
+                              }
+                          } catch (Throwable ignored) {
+                          }
+                      }
+                  }
+              }
+
+              private RecipeDef readRecipe(String id, ConfigSection s) {
+                  if (s == null) {
+                      return null;
+                  }
+                  RecipeDef r = new RecipeDef();
+                  r.id = id;
+                  r.resultSpec = s.getString("result", "");
+                  r.amount = Math.max(1, s.getInt("amount", 1));
+                  List<String> shape = s.getStringList("shape");
+                  ConfigSection ing = s.getSection("ingredients");
+                  Map<String, RecipeDef.Ing> byKey = new HashMap<>();
+                  for (int row = 0; row < 3; row++) {
+                      String line = row < shape.size() ? shape.get(row) : "";
+                      if (line == null) {
+                          line = "";
+                      }
+                      for (int col = 0; col < 3; col++) {
+                          if (col >= line.length()) {
+                              continue;
+                          }
+                          char ch = line.charAt(col);
+                          if (ch == ' ') {
+                              continue;
+                          }
+                          String key = String.valueOf(ch);
+                          RecipeDef.Ing g = byKey.get(key);
+                          if (g == null) {
+                              String spec = ing == null ? "" : ing.getString(key, "");
+                              if (spec == null || spec.isEmpty()) {
+                                  continue;
+                              }
+                              g = new RecipeDef.Ing();
+                              if (spec.startsWith("custom:")) {
+                                  g.custom = spec.substring("custom:".length()).trim();
+                              } else {
+                                  g.vanilla = ItemUtil.parse(spec, 1);
+                              }
+                              byKey.put(key, g);
+                              r.ings.add(g);
+                          }
+                          g.total++;
+                          r.grid[row][col] = g;
+                      }
+                  }
+                  if (r.ings.isEmpty() || r.resultSpec.isEmpty()) {
+                      return null;
+                  }
+                  return r;
+              }
+
+              public ItemDef def(String id) {
+                  return id == null ? null : defs.get(id);
+              }
+
+              public Collection<ItemDef> defs() {
+                  return defs.values();
+              }
+
+              public RecipeDef recipe(String id) {
+                  return id == null ? null : recipes.get(id);
+              }
+
+              public Collection<RecipeDef> recipes() {
+                  return recipes.values();
+              }
+
+              /** Создаёт готовый кастом-предмет по id из config.yml. */
+              public Item build(String id, int count) {
+                  ItemDef d = defs.get(id);
+                  if (d == null) {
+                      return null;
+                  }
+                  Item it = null;
+                  if (plugin.isCustomActive() && d.customId != null && !d.customId.isEmpty()) {
+                      Class<?> c = plugin.customClass(d.customId);
+                      if (c != null) {
+                          try {
+                              it = (Item) c.getDeclaredConstructor().newInstance();
+                          } catch (Throwable ignored) {
+                              it = null;
+                          }
+                      }
+                  }
+                  if (it == null) {
+                      it = ItemUtil.parse(d.base, 1);
+                  }
+                  it.setCount(Math.max(1, count));
+                  it.setCustomName(ItemUtil.c(d.name));
+                  it.setLore(ItemUtil.lore(d.lore, plugin.getConfig()));
+                  return ItemUtil.mark(it, id);
+              }
+
+              /** Результат рецепта. */
+              public Item buildResult(RecipeDef r) {
+                  Item it;
+                  if (r.resultSpec.startsWith("custom:")) {
+                      it = build(r.resultSpec.substring("custom:".length()).trim(), r.amount);
+                      if (it == null) {
+                          it = ItemUtil.parse("minecraft:stone|1", r.amount);
+                      }
+                  } else {
+                      it = ItemUtil.parse(r.resultSpec, r.amount);
+                  }
+                  return it;
+              }
+
+              /** Предмет для показа ингредиента в меню (1 шт.). */
+              public Item displayIng(RecipeDef.Ing g) {
+                  Item it = null;
+                  if (g.custom != null) {
+                      it = build(g.custom, 1);
+                  } else if (g.vanilla != null) {
+                      it = g.vanilla.clone();
+                      it.setCount(1);
+                  }
+                  if (it == null) {
+                      it = ItemUtil.parse("minecraft:barrier|416", 1);
+                  }
+                  return it;
+              }
+          }
+          EOF_ITEMREGISTRY
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/ItemUtil.java')"
+          cat > 'src/main/java/ru/eclips/custom/ItemUtil.java' <<'EOF_ITEMUTIL'
+          package ru.eclips.custom;
+
+          import cn.nukkit.item.Item;
+          import cn.nukkit.nbt.tag.CompoundTag;
+          import cn.nukkit.utils.Config;
+
+          import java.util.ArrayList;
+          import java.util.List;
+
+          /**
+           * Вспомогательные методы: цвета, разбор предметов, метка кастом-предмета в NBT.
+           */
+          public final class ItemUtil {
+
+              /** Ключ NBT, по которому плагин узнаёт свои предметы. */
+              public static final String TAG = "eclips_custom";
+
+              private ItemUtil() {
+              }
+
+              /** Заменяет & на знак цвета. */
+              public static String c(String s) {
+                  if (s == null) {
+                      return "";
+                  }
+                  return s.replace('&', '\u00a7');
+              }
+
+              private static String num(double d) {
+                  if (d == Math.floor(d)) {
+                      return String.valueOf((int) d);
+                  }
+                  return String.valueOf(d);
+              }
+
+              /** Описание предмета: подставляет {chance}, {multiplier}, {radius} и цвета. */
+              public static String[] lore(List<String> lines, Config cfg) {
+                  List<String> out = new ArrayList<>();
+                  if (lines != null) {
+                      for (String l : lines) {
+                          String s = l == null ? "" : l;
+                          s = s.replace("{chance}", num(cfg.getDouble("settings.obsidian-chance", 15)));
+                          s = s.replace("{multiplier}", num(cfg.getDouble("settings.fire-multiplier", 2.0)));
+                          s = s.replace("{radius}", num(cfg.getDouble("settings.tnt-radius", 4)));
+                          out.add(c(s));
+                      }
+                  }
+                  return out.toArray(new String[0]);
+              }
+
+              /**
+               * Разбор предмета из строки вида "minecraft:tnt|46" или "minecraft:glass|20:0".
+               * Сначала пробуем имя, потом числовой запасной id, в конце камень.
+               */
+              public static Item parse(String spec, int count) {
+                  String name = spec == null ? "" : spec.trim();
+                  String fb = null;
+                  int bar = name.indexOf('|');
+                  if (bar >= 0) {
+                      fb = name.substring(bar + 1).trim();
+                      name = name.substring(0, bar).trim();
+                  }
+                  Item it = null;
+                  if (!name.isEmpty()) {
+                      try {
+                          it = Item.fromString(name);
+                      } catch (Throwable ignored) {
+                          it = null;
+                      }
+                  }
+                  if (it == null || it.getId() == 0) {
+                      it = null;
+                      if (fb != null && !fb.isEmpty()) {
+                          try {
+                              String[] p = fb.split(":");
+                              int id = Integer.parseInt(p[0].trim());
+                              int meta = p.length > 1 ? Integer.parseInt(p[1].trim()) : 0;
+                              it = Item.get(id, meta, 1);
+                          } catch (Throwable ignored) {
+                              it = null;
+                          }
+                      }
+                  }
+                  if (it == null || it.getId() == 0) {
+                      it = Item.get(1, 0, 1);
+                  }
+                  it = it.clone();
+                  it.setCount(Math.max(1, count));
+                  return it;
+              }
+
+              /** Возвращает id кастом-предмета из NBT или null. */
+              public static String typeOf(Item item) {
+                  try {
+                      if (item == null || item.isNull() || !item.hasCompoundTag()) {
+                          return null;
+                      }
+                      CompoundTag t = item.getNamedTag();
+                      if (t == null || !t.contains(TAG)) {
+                          return null;
+                      }
+                      String v = t.getString(TAG);
+                      return v == null || v.isEmpty() ? null : v;
+                  } catch (Throwable ignored) {
+                      return null;
+                  }
+              }
+
+              /** Ставит метку кастом-предмета. */
+              public static Item mark(Item item, String id) {
+                  CompoundTag t = item.hasCompoundTag() ? item.getNamedTag() : new CompoundTag();
+                  t.putString(TAG, id);
+                  item.setNamedTag(t);
+                  return item;
+              }
+
+              /** Добавляет строки в конец описания. */
+              public static void addLore(Item it, String... extra) {
+                  List<String> l = new ArrayList<>();
+                  try {
+                      String[] old = it.getLore();
+                      if (old != null) {
+                          for (String s : old) {
+                              l.add(s);
+                          }
+                      }
+                  } catch (Throwable ignored) {
+                  }
+                  for (String s : extra) {
+                      l.add(s);
+                  }
+                  it.setLore(l.toArray(new String[0]));
+              }
+          }
+          EOF_ITEMUTIL
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/MenuInventory.java')"
+          cat > 'src/main/java/ru/eclips/custom/MenuInventory.java' <<'EOF_MENUINVENTORY'
+          package ru.eclips.custom;
+
+          import cn.nukkit.Player;
+          import cn.nukkit.block.Block;
+          import cn.nukkit.inventory.ContainerInventory;
+          import cn.nukkit.inventory.Inventory;
+          import cn.nukkit.inventory.InventoryHolder;
+          import cn.nukkit.inventory.InventoryType;
+          import cn.nukkit.level.Level;
+          import cn.nukkit.math.Vector3;
+          import cn.nukkit.nbt.NBTIO;
+          import cn.nukkit.nbt.tag.CompoundTag;
+          import cn.nukkit.network.protocol.DataPacket;
+
+          import java.lang.reflect.Method;
+          import java.nio.ByteOrder;
+          import java.util.HashMap;
+          import java.util.Map;
+
+          /**
+           * Виртуальный сундук (27 слотов). Над головой игрока на время меню подменяется
+           * блок на сундук (виден только этому игроку), при закрытии возвращается настоящий блок.
+           */
+          public class MenuInventory extends ContainerInventory {
+
+              /** Владелец инвентаря (точка, где стоит "фальшивый" сундук). */
+              public static class Holder extends Vector3 implements InventoryHolder {
+                  private MenuInventory inv;
+
+                  public Holder(int x, int y, int z) {
+                      super(x, y, z);
+                  }
+
+                  @Override
+                  public Inventory getInventory() {
+                      return inv;
+                  }
+              }
+
+              /** Тип меню: list, recipe, admin. */
+              public final String kind;
+              /** Дополнительные данные (для рецепта это id рецепта). */
+              public String data = "";
+              /** Слот -> id (рецепта или предмета). */
+              public final Map<Integer, String> slotMap = new HashMap<>();
+
+              private final Level level;
+              private final int bx;
+              private final int by;
+              private final int bz;
+              private final String title;
+              private final MenuManager manager;
+
+              public MenuInventory(Holder holder, Level level, String kind, String title, MenuManager manager) {
+                  super(holder, InventoryType.CHEST);
+                  holder.inv = this;
+                  this.level = level;
+                  this.kind = kind;
+                  this.title = title;
+                  this.manager = manager;
+                  this.bx = holder.getFloorX();
+                  this.by = holder.getFloorY();
+                  this.bz = holder.getFloorZ();
+              }
+
+              /** Показывает игроку фальшивый сундук и его название. */
+              public void placeFake(Player p) {
+                  try {
+                      Block b = Block.get(54);
+                      b.x = bx;
+                      b.y = by;
+                      b.z = bz;
+                      b.level = level;
+                      sendBlock(p, b);
+                  } catch (Throwable ignored) {
+                  }
+                  sendName(p);
+              }
+
+              /** Возвращает игроку настоящий блок на месте фальшивого сундука. */
+              public void restore(Player p) {
+                  try {
+                      Block real = level.getBlock(new Vector3(bx, by, bz));
+                      sendBlock(p, real);
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              private void sendBlock(Player p, Vector3 v) throws Exception {
+                  Method m = level.getClass().getMethod("sendBlocks", Player[].class, Vector3[].class);
+                  m.invoke(level, new Player[]{p}, new Vector3[]{v});
+              }
+
+              /** Название сундука (через данные блока-сущности), ошибки игнорируем. */
+              private void sendName(Player p) {
+                  try {
+                      CompoundTag tag = new CompoundTag()
+                              .putString("id", "Chest")
+                              .putInt("x", bx)
+                              .putInt("y", by)
+                              .putInt("z", bz)
+                              .putString("CustomName", title);
+                      byte[] bytes = NBTIO.write(tag, ByteOrder.LITTLE_ENDIAN);
+                      Class<?> pc = Class.forName("cn.nukkit.network.protocol.BlockEntityDataPacket");
+                      Object pk = pc.getDeclaredConstructor().newInstance();
+                      pc.getField("x").setInt(pk, bx);
+                      pc.getField("y").setInt(pk, by);
+                      pc.getField("z").setInt(pk, bz);
+                      pc.getField("namedTag").set(pk, bytes);
+                      p.dataPacket((DataPacket) pk);
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              @Override
+              public void onClose(Player who) {
+                  super.onClose(who);
+                  restore(who);
+                  if (manager != null) {
+                      manager.closed(who, this);
+                  }
+              }
+          }
+          EOF_MENUINVENTORY
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/MenuListener.java')"
+          cat > 'src/main/java/ru/eclips/custom/MenuListener.java' <<'EOF_MENULISTENER'
+          package ru.eclips.custom;
+
+          import cn.nukkit.Player;
+          import cn.nukkit.event.EventHandler;
+          import cn.nukkit.event.Listener;
+          import cn.nukkit.event.inventory.InventoryTransactionEvent;
+          import cn.nukkit.event.player.PlayerQuitEvent;
+          import cn.nukkit.inventory.Inventory;
+          import cn.nukkit.inventory.transaction.InventoryTransaction;
+          import cn.nukkit.inventory.transaction.action.InventoryAction;
+          import cn.nukkit.inventory.transaction.action.SlotChangeAction;
+
+          /**
+           * Перехватывает клики в меню плагина: предметы взять нельзя, клик обрабатывается плагином.
+           */
+          public class MenuListener implements Listener {
+
+              private final EclipsCustom plugin;
+
+              public MenuListener(EclipsCustom plugin) {
+                  this.plugin = plugin;
+              }
+
+              @EventHandler
+              public void onTransaction(InventoryTransactionEvent e) {
+                  try {
+                      InventoryTransaction tx = e.getTransaction();
+                      MenuInventory menu = null;
+                      int slot = -1;
+                      for (InventoryAction a : tx.getActions()) {
+                          if (a instanceof SlotChangeAction) {
+                              SlotChangeAction sca = (SlotChangeAction) a;
+                              Inventory inv = sca.getInventory();
+                              if (inv instanceof MenuInventory) {
+                                  menu = (MenuInventory) inv;
+                                  slot = sca.getSlot();
+                                  break;
+                              }
+                          }
+                      }
+                      if (menu == null) {
+                          return;
+                      }
+                      e.setCancelled(true);
+                      Player p = tx.getSource();
+                      if (p != null) {
+                          plugin.menus().click(p, menu, slot);
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              @EventHandler
+              public void onQuit(PlayerQuitEvent e) {
+                  try {
+                      plugin.menus().quit(e.getPlayer());
+                  } catch (Throwable ignored) {
+                  }
+              }
+          }
+          EOF_MENULISTENER
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/MenuManager.java')"
+          cat > 'src/main/java/ru/eclips/custom/MenuManager.java' <<'EOF_MENUMANAGER'
+          package ru.eclips.custom;
+
+          import cn.nukkit.Player;
+          import cn.nukkit.inventory.PlayerInventory;
+          import cn.nukkit.item.Item;
+          import cn.nukkit.scheduler.PluginTask;
+
+          import java.util.HashMap;
+          import java.util.Map;
+          import java.util.UUID;
+
+          /**
+           * Меню плагина: список крафтов (/custom), меню верстака с рецептом и
+           * админ-меню выдачи (/customg). Всё на виртуальных сундуках.
+           */
+          public class MenuManager {
+
+              public static final int SLOT_ARROW = 13;
+              public static final int SLOT_RESULT = 15;
+              public static final int SLOT_CRAFT = 24;
+              public static final int SLOT_BACK = 26;
+
+              private static final int[] LIST_SLOTS = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25};
+
+              private final EclipsCustom plugin;
+              private final Map<UUID, MenuInventory> open = new HashMap<>();
+              private final Map<UUID, Long> lastClick = new HashMap<>();
+
+              public MenuManager(EclipsCustom plugin) {
+                  this.plugin = plugin;
+              }
+
+              // ------------------------------------------------------------------ служебное
+
+              private void later(int ticks, final Runnable r) {
+                  try {
+                      plugin.getServer().getScheduler().scheduleDelayedTask(new PluginTask<EclipsCustom>(plugin) {
+                          @Override
+                          public void onRun(int currentTick) {
+                              try {
+                                  r.run();
+                              } catch (Throwable ignored) {
+                              }
+                          }
+                      }, ticks);
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              private MenuInventory create(Player p, String kind, String title) {
+                  int x = p.getFloorX();
+                  int z = p.getFloorZ();
+                  int y = p.getFloorY() + 3;
+                  if (y > 300) {
+                      y = p.getFloorY() - 3;
+                  }
+                  MenuInventory.Holder h = new MenuInventory.Holder(x, y, z);
+                  return new MenuInventory(h, p.getLevel(), kind, ItemUtil.c(title), this);
+              }
+
+              private Item pane() {
+                  Item it = ItemUtil.parse("minecraft:gray_stained_glass_pane|160:7", 1);
+                  it.setCustomName(ItemUtil.c("&r "));
+                  return it;
+              }
+
+              private Item button(String spec, String name, String... lore) {
+                  Item it = ItemUtil.parse(spec, 1);
+                  it.setCustomName(ItemUtil.c(name));
+                  if (lore != null && lore.length > 0) {
+                      String[] l = new String[lore.length];
+                      for (int i = 0; i < lore.length; i++) {
+                          l[i] = ItemUtil.c(lore[i]);
+                      }
+                      it.setLore(l);
+                  }
+                  return it;
+              }
+
+              private void fillPanes(MenuInventory m) {
+                  Item pane = pane();
+                  for (int i = 0; i < 27; i++) {
+                      m.setItem(i, pane.clone());
+                  }
+              }
+
+              /** Закрывает старое меню (если есть) и открывает новое с задержкой, чтобы клиент успел получить сундук. */
+              private void show(final Player p, final MenuInventory inv) {
+                  if (p == null || !p.isOnline()) {
+                      return;
+                  }
+                  final UUID id = p.getUniqueId();
+                  MenuInventory old = open.remove(id);
+                  if (old != null) {
+                      try {
+                          p.removeWindow(old);
+                      } catch (Throwable ignored) {
+                      }
+                  }
+                  open.put(id, inv);
+                  inv.placeFake(p);
+                  later(2, new Runnable() {
+                      @Override
+                      public void run() {
+                          if (open.get(id) == inv && p.isOnline()) {
+                              inv.placeFake(p);
+                          }
+                      }
+                  });
+                  later(5, new Runnable() {
+                      @Override
+                      public void run() {
+                          if (open.get(id) != inv || !p.isOnline()) {
+                              return;
+                          }
+                          try {
+                              int w = p.addWindow(inv);
+                              if (w < 0) {
+                                  open.remove(id);
+                                  inv.restore(p);
+                              }
+                          } catch (Throwable t) {
+                              open.remove(id);
+                              inv.restore(p);
+                          }
+                      }
+                  });
+              }
+
+              public void closed(Player p, MenuInventory inv) {
+                  try {
+                      UUID id = p.getUniqueId();
+                      if (open.get(id) == inv) {
+                          open.remove(id);
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              public void quit(Player p) {
+                  UUID id = p.getUniqueId();
+                  open.remove(id);
+                  lastClick.remove(id);
+              }
+
+              // ------------------------------------------------------------------ меню
+
+              /** /custom: список всех кастом крафтов. */
+              public void openList(Player p) {
+                  MenuInventory m = create(p, "list", plugin.getConfig().getString("menu.list-title", "&l&9Кастом крафты"));
+                  fillPanes(m);
+                  int i = 0;
+                  for (RecipeDef r : plugin.items().recipes()) {
+                      if (i >= LIST_SLOTS.length) {
+                          break;
+                      }
+                      Item it = plugin.items().buildResult(r);
+                      ItemUtil.addLore(it, ItemUtil.c("&r "), ItemUtil.c("&9Нажми, чтобы посмотреть рецепт"));
+                      m.setItem(LIST_SLOTS[i], it);
+                      m.slotMap.put(LIST_SLOTS[i], r.id);
+                      i++;
+                  }
+                  show(p, m);
+              }
+
+              /** Меню верстака с рецептом. */
+              public void openRecipe(Player p, RecipeDef r) {
+                  MenuInventory m = create(p, "recipe", plugin.getConfig().getString("menu.recipe-title", "&l&9Рецепт крафта"));
+                  m.data = r.id;
+                  fillRecipe(m, p, r);
+                  show(p, m);
+              }
+
+              /** /customg: меню выдачи всех кастом предметов (для админов). */
+              public void openAdmin(Player p) {
+                  MenuInventory m = create(p, "admin", plugin.getConfig().getString("menu.admin-title", "&l&9Кастом предметы (админ)"));
+                  fillPanes(m);
+                  int sneak = plugin.getConfig().getInt("settings.admin-sneak-amount", 16);
+                  int i = 0;
+                  for (ItemDef d : plugin.items().defs()) {
+                      if (i >= LIST_SLOTS.length) {
+                          break;
+                      }
+                      Item it = plugin.items().build(d.id, 1);
+                      if (it == null) {
+                          continue;
+                      }
+                      ItemUtil.addLore(it, ItemUtil.c("&r "), ItemUtil.c("&9Нажми: взять 1 шт."), ItemUtil.c("&9С приседанием: взять " + sneak + " шт."));
+                      m.setItem(LIST_SLOTS[i], it);
+                      m.slotMap.put(LIST_SLOTS[i], d.id);
+                      i++;
+                  }
+                  show(p, m);
+              }
+
+              private int count(PlayerInventory inv, RecipeDef.Ing g) {
+                  int n = 0;
+                  for (Item it : inv.getContents().values()) {
+                      if (g.matches(it)) {
+                          n += it.getCount();
+                      }
+                  }
+                  return n;
+              }
+
+              private void remove(PlayerInventory inv, RecipeDef.Ing g, int amount) {
+                  int left = amount;
+                  for (Map.Entry<Integer, Item> e : inv.getContents().entrySet()) {
+                      if (left <= 0) {
+                          break;
+                      }
+                      Item it = e.getValue();
+                      if (!g.matches(it)) {
+                          continue;
+                      }
+                      int take = Math.min(left, it.getCount());
+                      if (take >= it.getCount()) {
+                          inv.clear(e.getKey());
+                      } else {
+                          Item c = it.clone();
+                          c.setCount(it.getCount() - take);
+                          inv.setItem(e.getKey(), c);
+                      }
+                      left -= take;
+                  }
+              }
+
+              /** Заполняет (или обновляет) меню верстака. */
+              private void fillRecipe(MenuInventory m, Player p, RecipeDef r) {
+                  Item pane = pane();
+                  for (int i = 0; i < 27; i++) {
+                      m.setItem(i, pane.clone());
+                  }
+                  PlayerInventory inv = p.getInventory();
+                  Map<RecipeDef.Ing, Integer> have = new HashMap<>();
+                  boolean can = true;
+                  for (RecipeDef.Ing g : r.ings) {
+                      int h = count(inv, g);
+                      have.put(g, h);
+                      if (h < g.total) {
+                          can = false;
+                      }
+                  }
+                  for (int row = 0; row < 3; row++) {
+                      for (int col = 0; col < 3; col++) {
+                          int slot = row * 9 + col + 1;
+                          RecipeDef.Ing g = r.grid[row][col];
+                          if (g == null) {
+                              m.setItem(slot, Item.get(0));
+                              continue;
+                          }
+                          Item d = plugin.items().displayIng(g);
+                          int h = have.get(g);
+                          String color = h >= g.total ? "&a" : "&c";
+                          ItemUtil.addLore(d, ItemUtil.c("&r "), ItemUtil.c("&9Нужно всего: &l" + g.total), ItemUtil.c(color + "У тебя: &l" + h));
+                          m.setItem(slot, d);
+                      }
+                  }
+                  m.setItem(SLOT_ARROW, button("minecraft:arrow|262", "&l&9Крафт \u2192"));
+                  Item res = plugin.items().buildResult(r);
+                  ItemUtil.addLore(res, ItemUtil.c("&r "), ItemUtil.c("&9Результат крафта"));
+                  m.setItem(SLOT_RESULT, res);
+                  if (can) {
+                      m.setItem(SLOT_CRAFT, button("minecraft:crafting_table|58", "&l&aСкрафтить", "&9Нажми, чтобы скрафтить."));
+                  } else {
+                      m.setItem(SLOT_CRAFT, button("minecraft:crafting_table|58", "&l&cНе хватает ингредиентов", "&9Красное число: сколько не хватает."));
+                  }
+                  m.setItem(SLOT_BACK, button("minecraft:barrier|416", "&l&9\u00ab Назад к списку"));
+              }
+
+              // ------------------------------------------------------------------ клики
+
+              public void click(final Player p, MenuInventory m, int slot) {
+                  try {
+                      UUID id = p.getUniqueId();
+                      long now = System.currentTimeMillis();
+                      Long last = lastClick.get(id);
+                      if (last != null && now - last < 250L) {
+                          return;
+                      }
+                      lastClick.put(id, now);
+
+                      String data = m.slotMap.get(slot);
+                      if ("list".equals(m.kind)) {
+                          if (data != null) {
+                              final RecipeDef r = plugin.items().recipe(data);
+                              if (r != null) {
+                                  later(1, new Runnable() {
+                                      @Override
+                                      public void run() {
+                                          openRecipe(p, r);
+                                      }
+                                  });
+                              }
+                          }
+                      } else if ("recipe".equals(m.kind)) {
+                          RecipeDef r = plugin.items().recipe(m.data);
+                          if (r == null) {
+                              return;
+                          }
+                          if (slot == SLOT_BACK) {
+                              later(1, new Runnable() {
+                                  @Override
+                                  public void run() {
+                                      openList(p);
+                                  }
+                              });
+                          } else if (slot == SLOT_CRAFT) {
+                              craft(p, r);
+                              fillRecipe(m, p, r);
+                          }
+                      } else if ("admin".equals(m.kind)) {
+                          if (data != null && plugin.isAdmin(p)) {
+                              int amount = p.isSneaking() ? plugin.getConfig().getInt("settings.admin-sneak-amount", 16) : 1;
+                              plugin.giveTo(p, data, amount);
+                          }
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              /** Крафт: забирает ингредиенты из инвентаря и выдаёт результат. */
+              private void craft(Player p, RecipeDef r) {
+                  PlayerInventory inv = p.getInventory();
+                  for (RecipeDef.Ing g : r.ings) {
+                      if (count(inv, g) < g.total) {
+                          p.sendMessage(ItemUtil.c("&l&cНе хватает ингредиентов для крафта."));
+                          return;
+                      }
+                  }
+                  for (RecipeDef.Ing g : r.ings) {
+                      remove(inv, g, g.total);
+                  }
+                  Item res = plugin.items().buildResult(r);
+                  String name = res.hasCustomName() ? res.getCustomName() : res.getName();
+                  Item[] left = inv.addItem(res);
+                  if (left != null) {
+                      for (Item i : left) {
+                          if (i != null && !i.isNull()) {
+                              p.getLevel().dropItem(p, i);
+                          }
+                      }
+                  }
+                  p.sendMessage(ItemUtil.c("&l&aГотово! &r&9Скрафчено: &r") + name);
+              }
+          }
+          EOF_MENUMANAGER
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/PlacedStore.java')"
+          cat > 'src/main/java/ru/eclips/custom/PlacedStore.java' <<'EOF_PLACEDSTORE'
+          package ru.eclips.custom;
+
+          import cn.nukkit.level.Level;
+
+          import java.io.File;
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.nio.file.StandardCopyOption;
+          import java.util.HashMap;
+          import java.util.Map;
+
+          /**
+           * Запоминает, какие поставленные блоки ТНТ являются кастомными.
+           * Хранится на диске (plugins/EclipsCustom/placed.txt), переживает рестарт.
+           * Запись на диск идёт в отдельном потоке.
+           */
+          public class PlacedStore {
+
+              private final Map<String, String> map = new HashMap<>();
+              private final File file;
+              private boolean dirty = false;
+              private final Object ioLock = new Object();
+
+              public PlacedStore(EclipsCustom plugin) {
+                  this.file = new File(plugin.getDataFolder(), "placed.txt");
+              }
+
+              public static String key(Level l, int x, int y, int z) {
+                  return l.getFolderName() + "|" + x + "|" + y + "|" + z;
+              }
+
+              public void load() {
+                  try {
+                      if (file.getParentFile() != null) {
+                          file.getParentFile().mkdirs();
+                      }
+                      if (!file.exists()) {
+                          return;
+                      }
+                      for (String line : Files.readAllLines(file.toPath(), StandardCharsets.UTF_8)) {
+                          int eq = line.lastIndexOf('=');
+                          if (eq <= 0) {
+                              continue;
+                          }
+                          map.put(line.substring(0, eq), line.substring(eq + 1));
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              public String get(String key) {
+                  return map.get(key);
+              }
+
+              public void put(String key, String type) {
+                  map.put(key, type);
+                  dirty = true;
+              }
+
+              public void remove(String key) {
+                  if (map.remove(key) != null) {
+                      dirty = true;
+                  }
+              }
+
+              private String snapshot() {
+                  StringBuilder sb = new StringBuilder();
+                  for (Map.Entry<String, String> e : map.entrySet()) {
+                      sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
+                  }
+                  return sb.toString();
+              }
+
+              /** Сохраняет, если были изменения (запись в отдельном потоке). */
+              public void saveIfDirty() {
+                  if (!dirty) {
+                      return;
+                  }
+                  dirty = false;
+                  final String data = snapshot();
+                  Thread t = new Thread(() -> write(data), "EclipsCustom-save");
+                  t.setDaemon(true);
+                  t.start();
+              }
+
+              /** Синхронное сохранение (при выключении сервера). */
+              public void saveNow() {
+                  dirty = false;
+                  write(snapshot());
+              }
+
+              private void write(String data) {
+                  synchronized (ioLock) {
+                      try {
+                          File tmp = new File(file.getParentFile(), "placed.tmp");
+                          Files.write(tmp.toPath(), data.getBytes(StandardCharsets.UTF_8));
+                          try {
+                              Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                          } catch (Throwable moveFail) {
+                              Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                          }
+                      } catch (Throwable ignored) {
+                      }
+                  }
+              }
+          }
+          EOF_PLACEDSTORE
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/RecipeDef.java')"
+          cat > 'src/main/java/ru/eclips/custom/RecipeDef.java' <<'EOF_RECIPEDEF'
+          package ru.eclips.custom;
+
+          import cn.nukkit.item.Item;
+
+          import java.util.ArrayList;
+          import java.util.List;
+
+          /**
+           * Рецепт: сетка 3x3, результат и список ингредиентов с количеством.
+           */
+          public class RecipeDef {
+
+              /** Один вид ингредиента (занимает одну или несколько клеток сетки). */
+              public static class Ing {
+                  /** Id кастом-предмета или null. */
+                  public String custom;
+                  /** Обычный предмет или null. */
+                  public Item vanilla;
+                  /** Сколько штук нужно всего. */
+                  public int total;
+
+                  public boolean matches(Item it) {
+                      if (it == null || it.isNull()) {
+                          return false;
+                      }
+                      String type = ItemUtil.typeOf(it);
+                      if (custom != null) {
+                          return custom.equals(type);
+                      }
+                      return type == null && vanilla != null && it.getId() == vanilla.getId();
+                  }
+              }
+
+              public String id;
+              public String resultSpec = "";
+              public int amount = 1;
+              public final Ing[][] grid = new Ing[3][3];
+              public final List<Ing> ings = new ArrayList<>();
+          }
+          EOF_RECIPEDEF
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/TexturePack.java')"
+          cat > 'src/main/java/ru/eclips/custom/TexturePack.java' <<'EOF_TEXTUREPACK'
+          package ru.eclips.custom;
+
+          import cn.nukkit.utils.Config;
+          import cn.nukkit.utils.ConfigSection;
+
+          import java.io.ByteArrayOutputStream;
+          import java.io.DataOutputStream;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.IOException;
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.util.LinkedHashMap;
+          import java.util.Map;
+          import java.util.Set;
+          import java.util.zip.CRC32;
+          import java.util.zip.Deflater;
+          import java.util.zip.ZipEntry;
+          import java.util.zip.ZipOutputStream;
+
+          /**
+           * Заглушки текстур и ресурспак.
+           * Заглушки PNG создаются в plugins/EclipsCustom/textures/ (существующие файлы не трогаются).
+           * Чтобы поставить свою текстуру: замени PNG с тем же именем и перезапусти сервер,
+           * ресурспак пересоберётся сам (resource_packs/EclipsCustom.zip).
+           */
+          public class TexturePack {
+
+              private final EclipsCustom plugin;
+
+              public TexturePack(EclipsCustom plugin) {
+                  this.plugin = plugin;
+              }
+
+              public void prepare() throws Exception {
+                  Config cfg = plugin.getConfig();
+                  if (!cfg.getBoolean("textures.enabled", true)) {
+                      return;
+                  }
+                  File dir = new File(plugin.getDataFolder(), "textures");
+                  dir.mkdirs();
+
+                  Map<String, byte[]> files = new LinkedHashMap<>();
+                  ConfigSection items = cfg.getSection("items");
+                  if (items != null) {
+                      for (String id : items.getKeys(false)) {
+                          ConfigSection s = items.getSection(id);
+                          if (s == null) {
+                              continue;
+                          }
+                          String tex = s.getString("texture", "");
+                          if (tex == null || tex.isEmpty() || files.containsKey(tex)) {
+                              continue;
+                          }
+                          File f = new File(dir, tex + ".png");
+                          if (!f.exists()) {
+                              int rgb = parseColor(s.getString("texture-color", "#8A2BE2"));
+                              Files.write(f.toPath(), png(32, 32, gem(32, rgb)));
+                          }
+                          files.put(tex, Files.readAllBytes(f.toPath()));
+                      }
+                  }
+                  if (files.isEmpty() || !cfg.getBoolean("textures.build-pack", true)) {
+                      return;
+                  }
+
+                  CRC32 crc = new CRC32();
+                  for (byte[] b : files.values()) {
+                      crc.update(b);
+                  }
+                  int ver = (int) (crc.getValue() % 1000000L);
+
+                  File packs = new File(plugin.getServer().getDataPath(), "resource_packs");
+                  if (!packs.isDirectory()) {
+                      packs = new File("resource_packs");
+                  }
+                  packs.mkdirs();
+                  File zip = new File(packs, cfg.getString("textures.pack-file", "EclipsCustom.zip"));
+                  try (ZipOutputStream z = new ZipOutputStream(new FileOutputStream(zip))) {
+                      put(z, "manifest.json", manifest(ver).getBytes(StandardCharsets.UTF_8));
+                      put(z, "pack_icon.png", files.values().iterator().next());
+                      put(z, "textures/item_texture.json", itemTexture(files.keySet()).getBytes(StandardCharsets.UTF_8));
+                      for (Map.Entry<String, byte[]> e : files.entrySet()) {
+                          put(z, "textures/items/" + e.getKey() + ".png", e.getValue());
+                      }
+                  }
+              }
+
+              private static void put(ZipOutputStream z, String name, byte[] data) throws IOException {
+                  z.putNextEntry(new ZipEntry(name));
+                  z.write(data);
+                  z.closeEntry();
+              }
+
+              private static String manifest(int ver) {
+                  return "{\n"
+                          + "  \"format_version\": 2,\n"
+                          + "  \"header\": {\n"
+                          + "    \"name\": \"EclipsCustom textures\",\n"
+                          + "    \"description\": \"Eclips custom items\",\n"
+                          + "    \"uuid\": \"5b0e3c1a-7d2f-4a9e-9c61-2f8d4b7a1e30\",\n"
+                          + "    \"version\": [1, 0, " + ver + "],\n"
+                          + "    \"min_engine_version\": [1, 20, 0]\n"
+                          + "  },\n"
+                          + "  \"modules\": [\n"
+                          + "    {\n"
+                          + "      \"type\": \"resources\",\n"
+                          + "      \"uuid\": \"c3a7d9e2-1b4f-4e68-a0d5-6e92f1b8c473\",\n"
+                          + "      \"version\": [1, 0, " + ver + "]\n"
+                          + "    }\n"
+                          + "  ]\n"
+                          + "}\n";
+              }
+
+              private static String itemTexture(Set<String> names) {
+                  StringBuilder sb = new StringBuilder();
+                  sb.append("{\n  \"resource_pack_name\": \"eclips_custom\",\n  \"texture_name\": \"atlas.items\",\n  \"texture_data\": {\n");
+                  int i = 0;
+                  for (String n : names) {
+                      sb.append("    \"").append(n).append("\": { \"textures\": \"textures/items/").append(n).append("\" }");
+                      i++;
+                      sb.append(i < names.size() ? ",\n" : "\n");
+                  }
+                  sb.append("  }\n}\n");
+                  return sb.toString();
+              }
+
+              private static int parseColor(String s) {
+                  try {
+                      String h = s.trim();
+                      if (h.startsWith("#")) {
+                          h = h.substring(1);
+                      }
+                      return Integer.parseInt(h, 16) & 0xFFFFFF;
+                  } catch (Throwable t) {
+                      return 0x8A2BE2;
+                  }
+              }
+
+              private static int shade(int rgb, double f) {
+                  int r = clamp((int) (((rgb >> 16) & 255) * f));
+                  int g = clamp((int) (((rgb >> 8) & 255) * f));
+                  int b = clamp((int) ((rgb & 255) * f));
+                  return (r << 16) | (g << 8) | b;
+              }
+
+              private static int clamp(int v) {
+                  return Math.max(0, Math.min(255, v));
+              }
+
+              /** Рисует простой кристалл-ромб нужного цвета (прозрачный фон). */
+              private static int[] gem(int n, int rgb) {
+                  int[] px = new int[n * n];
+                  double c = (n - 1) / 2.0;
+                  double r = n * 0.46;
+                  for (int y = 0; y < n; y++) {
+                      for (int x = 0; x < n; x++) {
+                          double dx = x - c;
+                          double dy = y - c;
+                          double dist = Math.abs(dx) + Math.abs(dy);
+                          if (dist > r) {
+                              px[y * n + x] = 0;
+                              continue;
+                          }
+                          double f;
+                          if (dist > r - 2.0) {
+                              f = 0.55;
+                          } else {
+                              f = 1.0 + (-dx - dy) / (n * 1.1);
+                          }
+                          px[y * n + x] = 0xFF000000 | shade(rgb, f);
+                      }
+                  }
+                  return px;
+              }
+
+              /** Минимальный PNG-кодировщик (RGBA, без AWT). */
+              private static byte[] png(int w, int h, int[] argb) throws IOException {
+                  ByteArrayOutputStream raw = new ByteArrayOutputStream();
+                  for (int y = 0; y < h; y++) {
+                      raw.write(0);
+                      for (int x = 0; x < w; x++) {
+                          int p = argb[y * w + x];
+                          raw.write((p >> 16) & 255);
+                          raw.write((p >> 8) & 255);
+                          raw.write(p & 255);
+                          raw.write((p >>> 24) & 255);
+                      }
+                  }
+                  Deflater d = new Deflater();
+                  d.setInput(raw.toByteArray());
+                  d.finish();
+                  ByteArrayOutputStream comp = new ByteArrayOutputStream();
+                  byte[] buf = new byte[4096];
+                  while (!d.finished()) {
+                      int len = d.deflate(buf);
+                      comp.write(buf, 0, len);
+                  }
+                  d.end();
+
+                  ByteArrayOutputStream out = new ByteArrayOutputStream();
+                  out.write(new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10});
+                  ByteArrayOutputStream ih = new ByteArrayOutputStream();
+                  DataOutputStream di = new DataOutputStream(ih);
+                  di.writeInt(w);
+                  di.writeInt(h);
+                  di.writeByte(8);
+                  di.writeByte(6);
+                  di.writeByte(0);
+                  di.writeByte(0);
+                  di.writeByte(0);
+                  chunk(out, "IHDR", ih.toByteArray());
+                  chunk(out, "IDAT", comp.toByteArray());
+                  chunk(out, "IEND", new byte[0]);
+                  return out.toByteArray();
+              }
+
+              private static void chunk(ByteArrayOutputStream out, String type, byte[] data) throws IOException {
+                  DataOutputStream d = new DataOutputStream(out);
+                  d.writeInt(data.length);
+                  byte[] t = type.getBytes(StandardCharsets.US_ASCII);
+                  d.write(t);
+                  d.write(data);
+                  CRC32 c = new CRC32();
+                  c.update(t);
+                  c.update(data);
+                  d.writeInt((int) c.getValue());
+              }
+          }
+          EOF_TEXTUREPACK
+          mkdir -p "$(dirname 'src/main/java/ru/eclips/custom/TntListener.java')"
+          cat > 'src/main/java/ru/eclips/custom/TntListener.java' <<'EOF_TNTLISTENER'
+          package ru.eclips.custom;
+
+          import cn.nukkit.block.Block;
+          import cn.nukkit.entity.Entity;
+          import cn.nukkit.entity.EntityLiving;
+          import cn.nukkit.event.Cancellable;
+          import cn.nukkit.event.EventHandler;
+          import cn.nukkit.event.EventPriority;
+          import cn.nukkit.event.Listener;
+          import cn.nukkit.event.block.BlockBreakEvent;
+          import cn.nukkit.event.block.BlockPlaceEvent;
+          import cn.nukkit.event.entity.EntityExplodeEvent;
+          import cn.nukkit.event.entity.EntitySpawnEvent;
+          import cn.nukkit.item.Item;
+          import cn.nukkit.level.Level;
+          import cn.nukkit.math.SimpleAxisAlignedBB;
+          import cn.nukkit.math.Vector3;
+          import cn.nukkit.scheduler.PluginTask;
+          import cn.nukkit.utils.Config;
+
+          import java.lang.reflect.Constructor;
+          import java.lang.reflect.InvocationHandler;
+          import java.lang.reflect.Method;
+          import java.lang.reflect.Proxy;
+          import java.util.ArrayList;
+          import java.util.HashMap;
+          import java.util.HashSet;
+          import java.util.Iterator;
+          import java.util.List;
+          import java.util.Map;
+          import java.util.Set;
+          import java.util.concurrent.ThreadLocalRandom;
+
+          /**
+           * Логика кастомных ТНТ: разрушитель, подводный, огненный.
+           * Защиту приватов эти обработчики не делают: они работают с НИЗКИМ приоритетом,
+           * поэтому другие плагины (приваты и т.д.) выполняются позже и могут вмешаться.
+           */
+          public class TntListener implements Listener {
+
+              private static class Info {
+                  final String type;
+                  final long time = System.currentTimeMillis();
+                  boolean primeApplied = false;
+
+                  Info(String type) {
+                      this.type = type;
+                  }
+              }
+
+              private final EclipsCustom plugin;
+              private final Map<Long, Info> primed = new HashMap<>();
+              private boolean primeHooked = false;
+
+              private boolean igniteInit = false;
+              private Constructor<?> igniteCtor = null;
+              private Object igniteCause = null;
+
+              public TntListener(EclipsCustom plugin) {
+                  this.plugin = plugin;
+              }
+
+              // ------------------------------------------------------------------ установка и ломание
+
+              @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+              public void onPlace(BlockPlaceEvent e) {
+                  try {
+                      Block b = e.getBlock();
+                      if (b == null) {
+                          return;
+                      }
+                      String key = PlacedStore.key(b.getLevel(), b.getFloorX(), b.getFloorY(), b.getFloorZ());
+                      String type = ItemUtil.typeOf(e.getItem());
+                      ItemDef d = type == null ? null : plugin.items().def(type);
+                      if (b.getId() == 46 && d != null && d.isTnt()) {
+                          plugin.store().put(key, type);
+                      } else {
+                          plugin.store().remove(key);
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+              public void onBreak(BlockBreakEvent e) {
+                  try {
+                      Block b = e.getBlock();
+                      if (b == null) {
+                          return;
+                      }
+                      String key = PlacedStore.key(b.getLevel(), b.getFloorX(), b.getFloorY(), b.getFloorZ());
+                      String type = plugin.store().get(key);
+                      if (type == null) {
+                          return;
+                      }
+                      plugin.store().remove(key);
+                      if (b.getId() == 46 && !e.getPlayer().isCreative()) {
+                          Item drop = plugin.items().build(type, 1);
+                          if (drop != null) {
+                              e.setDrops(new Item[]{drop});
+                          }
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              // ------------------------------------------------------------------ зажжённый ТНТ
+
+              @EventHandler(priority = EventPriority.NORMAL)
+              public void onSpawn(EntitySpawnEvent e) {
+                  try {
+                      Entity en = e.getEntity();
+                      if (en == null || !en.getClass().getSimpleName().equals("EntityPrimedTNT")) {
+                          return;
+                      }
+                      Level lv = en.getLevel();
+                      int x = en.getFloorX();
+                      int y = en.getFloorY();
+                      int z = en.getFloorZ();
+                      String key = PlacedStore.key(lv, x, y, z);
+                      String type = plugin.store().get(key);
+                      if (type == null) {
+                          key = PlacedStore.key(lv, x, y - 1, z);
+                          type = plugin.store().get(key);
+                      }
+                      if (type == null) {
+                          return;
+                      }
+                      plugin.store().remove(key);
+                      primed.put(en.getId(), new Info(type));
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              /** Регистрируем событие "подготовка взрыва" через рефлексию (название класса зависит от ядра). */
+              public void hookPrimeEvent() {
+                  String[] names = {"cn.nukkit.event.entity.ExplosionPrimeEvent", "cn.nukkit.event.entity.EntityExplosionPrimeEvent"};
+                  for (String cn : names) {
+                      try {
+                          Class<?> evClass = Class.forName(cn);
+                          Class<?> exClass = Class.forName("cn.nukkit.plugin.EventExecutor");
+                          final Listener self = this;
+                          Object proxy = Proxy.newProxyInstance(exClass.getClassLoader(), new Class<?>[]{exClass}, new InvocationHandler() {
+                              @Override
+                              public Object invoke(Object pr, Method m, Object[] a) throws Throwable {
+                                  String n = m.getName();
+                                  if (n.equals("hashCode")) {
+                                      return System.identityHashCode(pr);
+                                  }
+                                  if (n.equals("equals")) {
+                                      return a != null && a.length > 0 && pr == a[0];
+                                  }
+                                  if (n.equals("toString")) {
+                                      return "EclipsCustomPrimeExecutor";
+                                  }
+                                  if (n.equals("execute") && a != null && a.length >= 2) {
+                                      onPrime(a[1]);
+                                  }
+                                  return null;
+                              }
+                          });
+                          Object pm = plugin.getServer().getPluginManager();
+                          Method reg = null;
+                          for (Method m : pm.getClass().getMethods()) {
+                              if (m.getName().equals("registerEvent") && m.getParameterCount() == 5) {
+                                  reg = m;
+                                  break;
+                              }
+                          }
+                          if (reg == null) {
+                              continue;
+                          }
+                          reg.invoke(pm, evClass, self, EventPriority.LOW, proxy, plugin);
+                          primeHooked = true;
+                          return;
+                      } catch (Throwable ignored) {
+                      }
+                  }
+              }
+
+              /** Огненный ТНТ: увеличиваем силу взрыва. */
+              private void onPrime(Object ev) {
+                  try {
+                      Object ent = ev.getClass().getMethod("getEntity").invoke(ev);
+                      if (!(ent instanceof Entity)) {
+                          return;
+                      }
+                      Info info = primed.get(((Entity) ent).getId());
+                      if (info == null) {
+                          return;
+                      }
+                      ItemDef d = plugin.items().def(info.type);
+                      if (d == null || !"fire".equals(d.kind)) {
+                          return;
+                      }
+                      double mult = plugin.getConfig().getDouble("settings.fire-multiplier", 2.0);
+                      double force = ((Number) ev.getClass().getMethod("getForce").invoke(ev)).doubleValue();
+                      ev.getClass().getMethod("setForce", double.class).invoke(ev, force * mult);
+                      info.primeApplied = true;
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              // ------------------------------------------------------------------ взрыв
+
+              @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+              public void onExplode(EntityExplodeEvent e) {
+                  try {
+                      Entity en = e.getEntity();
+                      if (en == null) {
+                          return;
+                      }
+                      Info info = primed.remove(en.getId());
+                      if (info == null) {
+                          return;
+                      }
+                      ItemDef d = plugin.items().def(info.type);
+                      if (d == null) {
+                          return;
+                      }
+                      Level lv = en.getLevel();
+                      int cx = en.getFloorX();
+                      int cy = en.getFloorY();
+                      int cz = en.getFloorZ();
+                      Config cfg = plugin.getConfig();
+                      int radius = Math.max(1, cfg.getInt("settings.tnt-radius", 4));
+                      double chance = cfg.getDouble("settings.obsidian-chance", 15);
+
+                      List<Block> list = new ArrayList<>(e.getBlockList());
+                      Set<Long> have = new HashSet<>();
+                      for (Block b : list) {
+                          have.add(pack(b.getFloorX(), b.getFloorY(), b.getFloorZ()));
+                      }
+
+                      if ("breaker".equals(d.kind) || "underwater".equals(d.kind)) {
+                          addObsidian(lv, cx, cy, cz, radius, chance, have, list);
+                      }
+                      if ("underwater".equals(d.kind) && inWater(lv, cx, cy, cz)) {
+                          addUnderwater(lv, cx, cy, cz, Math.max(1, cfg.getInt("settings.underwater-radius", 4)), have, list);
+                      }
+                      if ("fire".equals(d.kind)) {
+                          if (!info.primeApplied) {
+                              double mult = cfg.getDouble("settings.fire-multiplier", 2.0);
+                              addBig(lv, cx, cy, cz, radius * mult, have, list);
+                          }
+                          scheduleFire(lv, cx, cy, cz, radius * cfg.getDouble("settings.fire-multiplier", 2.0));
+                      }
+                      e.setBlockList(list);
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              private static long pack(int x, int y, int z) {
+                  return ((long) (x & 0x3FFFFFF) << 38) | ((long) (z & 0x3FFFFFF) << 12) | (long) (y & 0xFFF);
+              }
+
+              private static boolean isWater(int id) {
+                  return id == 8 || id == 9;
+              }
+
+              private static boolean isLiquid(int id) {
+                  return id == 8 || id == 9 || id == 10 || id == 11;
+              }
+
+              private boolean inWater(Level lv, int x, int y, int z) {
+                  return isWater(lv.getBlockIdAt(x, y, z))
+                          || isWater(lv.getBlockIdAt(x, y + 1, z))
+                          || isWater(lv.getBlockIdAt(x + 1, y, z))
+                          || isWater(lv.getBlockIdAt(x - 1, y, z))
+                          || isWater(lv.getBlockIdAt(x, y, z + 1))
+                          || isWater(lv.getBlockIdAt(x, y, z - 1));
+              }
+
+              private boolean touchesWater(Level lv, int x, int y, int z) {
+                  return isWater(lv.getBlockIdAt(x + 1, y, z))
+                          || isWater(lv.getBlockIdAt(x - 1, y, z))
+                          || isWater(lv.getBlockIdAt(x, y + 1, z))
+                          || isWater(lv.getBlockIdAt(x, y - 1, z))
+                          || isWater(lv.getBlockIdAt(x, y, z + 1))
+                          || isWater(lv.getBlockIdAt(x, y, z - 1));
+              }
+
+              private boolean exposed(Level lv, int x, int y, int z) {
+                  int[][] n = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+                  for (int[] o : n) {
+                      int id = lv.getBlockIdAt(x + o[0], y + o[1], z + o[2]);
+                      if (id == 0 || isLiquid(id)) {
+                          return true;
+                      }
+                  }
+                  return false;
+              }
+
+              /** Каждый открытый блок обсидиана в радиусе ломается с шансом chance процентов. */
+              private void addObsidian(Level lv, int cx, int cy, int cz, int r, double chance, Set<Long> have, List<Block> list) {
+                  ThreadLocalRandom rnd = ThreadLocalRandom.current();
+                  for (int dx = -r; dx <= r; dx++) {
+                      for (int dy = -r; dy <= r; dy++) {
+                          for (int dz = -r; dz <= r; dz++) {
+                              if (dx * dx + dy * dy + dz * dz > r * r) {
+                                  continue;
+                              }
+                              int x = cx + dx;
+                              int y = cy + dy;
+                              int z = cz + dz;
+                              if (lv.getBlockIdAt(x, y, z) != 49) {
+                                  continue;
+                              }
+                              long k = pack(x, y, z);
+                              if (have.contains(k) || !exposed(lv, x, y, z)) {
+                                  continue;
+                              }
+                              if (rnd.nextDouble() * 100.0 < chance) {
+                                  list.add(lv.getBlock(new Vector3(x, y, z)));
+                                  have.add(k);
+                              }
+                          }
+                      }
+                  }
+              }
+
+              /** Подводный ТНТ: ломает блоки, которые касаются воды (под водой). */
+              private void addUnderwater(Level lv, int cx, int cy, int cz, int r, Set<Long> have, List<Block> list) {
+                  for (int dx = -r; dx <= r; dx++) {
+                      for (int dy = -r; dy <= r; dy++) {
+                          for (int dz = -r; dz <= r; dz++) {
+                              if (dx * dx + dy * dy + dz * dz > r * r) {
+                                  continue;
+                              }
+                              int x = cx + dx;
+                              int y = cy + dy;
+                              int z = cz + dz;
+                              int id = lv.getBlockIdAt(x, y, z);
+                              if (id == 0 || isLiquid(id) || id == 49) {
+                                  continue;
+                              }
+                              long k = pack(x, y, z);
+                              if (have.contains(k) || !touchesWater(lv, x, y, z)) {
+                                  continue;
+                              }
+                              Block b = lv.getBlock(new Vector3(x, y, z));
+                              if (b.getHardness() < 0) {
+                                  continue;
+                              }
+                              list.add(b);
+                              have.add(k);
+                          }
+                      }
+                  }
+              }
+
+              /** Запасной вариант для огненного ТНТ, если сила взрыва не изменилась: расширяем область вручную. */
+              private void addBig(Level lv, int cx, int cy, int cz, double rr, Set<Long> have, List<Block> list) {
+                  ThreadLocalRandom rnd = ThreadLocalRandom.current();
+                  int ir = (int) Math.ceil(rr);
+                  for (int dx = -ir; dx <= ir; dx++) {
+                      for (int dy = -ir; dy <= ir; dy++) {
+                          for (int dz = -ir; dz <= ir; dz++) {
+                              double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                              if (dist > rr) {
+                                  continue;
+                              }
+                              int x = cx + dx;
+                              int y = cy + dy;
+                              int z = cz + dz;
+                              int id = lv.getBlockIdAt(x, y, z);
+                              if (id == 0 || isLiquid(id) || id == 49) {
+                                  continue;
+                              }
+                              if (rnd.nextDouble() > 1.0 - 0.7 * (dist / rr)) {
+                                  continue;
+                              }
+                              long k = pack(x, y, z);
+                              if (have.contains(k)) {
+                                  continue;
+                              }
+                              Block b = lv.getBlock(new Vector3(x, y, z));
+                              if (b.getHardness() < 0) {
+                                  continue;
+                              }
+                              list.add(b);
+                              have.add(k);
+                          }
+                      }
+                  }
+              }
+
+              // ------------------------------------------------------------------ огонь
+
+              private void scheduleFire(final Level lv, final int cx, final int cy, final int cz, final double radius) {
+                  int delay = Math.max(1, plugin.getConfig().getInt("settings.fire-delay-ticks", 2));
+                  try {
+                      plugin.getServer().getScheduler().scheduleDelayedTask(new PluginTask<EclipsCustom>(plugin) {
+                          @Override
+                          public void onRun(int currentTick) {
+                              try {
+                                  doFire(lv, cx, cy, cz, radius);
+                              } catch (Throwable ignored) {
+                              }
+                          }
+                      }, delay);
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              /** Поджигает землю и существ вокруг места взрыва. */
+              private void doFire(Level lv, int cx, int cy, int cz, double radius) {
+                  Config cfg = plugin.getConfig();
+                  double chance = cfg.getDouble("settings.fire-chance", 35);
+                  int max = Math.max(1, cfg.getInt("settings.fire-max-blocks", 300));
+                  int seconds = Math.max(1, cfg.getInt("settings.fire-entity-seconds", 6));
+                  ThreadLocalRandom rnd = ThreadLocalRandom.current();
+                  int ir = (int) Math.ceil(radius);
+                  int placed = 0;
+                  for (int dx = -ir; dx <= ir && placed < max; dx++) {
+                      for (int dy = -ir; dy <= ir && placed < max; dy++) {
+                          for (int dz = -ir; dz <= ir && placed < max; dz++) {
+                              if (dx * dx + dy * dy + dz * dz > radius * radius) {
+                                  continue;
+                              }
+                              int x = cx + dx;
+                              int y = cy + dy;
+                              int z = cz + dz;
+                              if (lv.getBlockIdAt(x, y, z) != 0) {
+                                  continue;
+                              }
+                              int below = lv.getBlockIdAt(x, y - 1, z);
+                              if (below == 0 || isLiquid(below)) {
+                                  continue;
+                              }
+                              if (rnd.nextDouble() * 100.0 >= chance) {
+                                  continue;
+                              }
+                              if (!canIgnite(lv, x, y, z)) {
+                                  continue;
+                              }
+                              lv.setBlock(new Vector3(x, y, z), Block.get(51));
+                              placed++;
+                          }
+                      }
+                  }
+                  try {
+                      Entity[] list = lv.getNearbyEntities(new SimpleAxisAlignedBB(cx - radius, cy - radius, cz - radius, cx + radius, cy + radius, cz + radius));
+                      if (list != null) {
+                          Vector3 center = new Vector3(cx + 0.5, cy + 0.5, cz + 0.5);
+                          for (Entity en : list) {
+                              if (en instanceof EntityLiving && en.distance(center) <= radius) {
+                                  en.setOnFire(seconds);
+                              }
+                          }
+                      }
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              /** Спрашиваем другие плагины, можно ли здесь поджечь (событие поджога блока). */
+              private boolean canIgnite(Level lv, int x, int y, int z) {
+                  try {
+                      if (!igniteInit) {
+                          igniteInit = true;
+                          Class<?> ec = Class.forName("cn.nukkit.event.block.BlockIgniteEvent");
+                          Class<?> cc = Class.forName("cn.nukkit.event.block.BlockIgniteEvent$BlockIgniteCause");
+                          Object[] vals = cc.getEnumConstants();
+                          for (Object v : vals) {
+                              if (v.toString().equals("EXPLOSION")) {
+                                  igniteCause = v;
+                              }
+                          }
+                          if (igniteCause == null && vals.length > 0) {
+                              igniteCause = vals[0];
+                          }
+                          igniteCtor = ec.getConstructor(Block.class, Block.class, Entity.class, cc);
+                      }
+                      if (igniteCtor == null) {
+                          return true;
+                      }
+                      Block target = lv.getBlock(new Vector3(x, y, z));
+                      Object ev = igniteCtor.newInstance(target, null, null, igniteCause);
+                      plugin.getServer().getPluginManager().callEvent((cn.nukkit.event.Event) ev);
+                      return !((Cancellable) ev).isCancelled();
+                  } catch (Throwable t) {
+                      igniteCtor = null;
+                      return true;
+                  }
+              }
+
+              /** Чистим записи о зажжённых ТНТ, которые так и не взорвались. */
+              public void cleanup() {
+                  long now = System.currentTimeMillis();
+                  Iterator<Map.Entry<Long, Info>> it = primed.entrySet().iterator();
+                  while (it.hasNext()) {
+                      if (now - it.next().getValue().time > 600000L) {
+                          it.remove();
+                      }
+                  }
+              }
+
+              public boolean isPrimeHooked() {
+                  return primeHooked;
+              }
+          }
+          EOF_TNTLISTENER
+          mkdir -p "$(dirname 'ci-src/CrystalBreakerItem.java')"
+          cat > 'ci-src/CrystalBreakerItem.java' <<'EOF_CI_CRYSTALBREAKERITEM'
+          package ru.eclips.custom.ci;
+
+          import cn.nukkit.item.customitem.ItemCustom;
+
+          /** Кристалл как настоящий кастом-предмет (текстура eclips_crystal_breaker). */
+          public class CrystalBreakerItem extends ItemCustom {
+              public CrystalBreakerItem() {
+                  super("eclips:crystal_breaker", "Crystal", "eclips_crystal_breaker");
+              }
+          }
+          EOF_CI_CRYSTALBREAKERITEM
+          mkdir -p "$(dirname 'ci-src/CrystalFireItem.java')"
+          cat > 'ci-src/CrystalFireItem.java' <<'EOF_CI_CRYSTALFIREITEM'
+          package ru.eclips.custom.ci;
+
+          import cn.nukkit.item.customitem.ItemCustom;
+
+          /** Кристалл как настоящий кастом-предмет (текстура eclips_crystal_fire). */
+          public class CrystalFireItem extends ItemCustom {
+              public CrystalFireItem() {
+                  super("eclips:crystal_fire", "Crystal", "eclips_crystal_fire");
+              }
+          }
+          EOF_CI_CRYSTALFIREITEM
+          mkdir -p "$(dirname 'ci-src/CrystalWaterItem.java')"
+          cat > 'ci-src/CrystalWaterItem.java' <<'EOF_CI_CRYSTALWATERITEM'
+          package ru.eclips.custom.ci;
+
+          import cn.nukkit.item.customitem.ItemCustom;
+
+          /** Кристалл как настоящий кастом-предмет (текстура eclips_crystal_water). */
+          public class CrystalWaterItem extends ItemCustom {
+              public CrystalWaterItem() {
+                  super("eclips:crystal_water", "Crystal", "eclips_crystal_water");
+              }
+          }
+          EOF_CI_CRYSTALWATERITEM
+
+      - name: Build jar
+        run: |
+          set -e
+          OK=0
+          for COMBO in "cn.nukkit:Nukkit:MOT-SNAPSHOT" "cn.nukkit:nukkit:MOT-SNAPSHOT" "cn.nukkit:Nukkit:1.0-SNAPSHOT" "cn.nukkit:nukkit:1.0-SNAPSHOT"; do
+            G=${COMBO%%:*}
+            REST=${COMBO#*:}
+            A=${REST%%:*}
+            V=${REST#*:}
+            for VAR in with-ci no-ci; do
+              rm -rf src/main/java/ru/eclips/custom/ci
+              if [ "$VAR" = "with-ci" ]; then
+                mkdir -p src/main/java/ru/eclips/custom/ci
+                cp ci-src/*.java src/main/java/ru/eclips/custom/ci/
+              fi
+              echo "=== Попытка: $COMBO / $VAR ==="
+              if mvn -B -q -U clean package -Dnk.group=$G -Dnk.artifact=$A -Dnk.version=$V; then
+                OK=1
+                echo "BUILD_OK $COMBO $VAR"
+                echo "Сборка: $COMBO, кристаллы-кастом-предметы: $VAR" >> "$GITHUB_STEP_SUMMARY"
+                break 2
+              fi
+            done
+          done
+          if [ "$OK" -ne 1 ]; then
+            echo "Не удалось собрать ни с одним вариантом ядра."
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EclipsCustom
+          path: target/EclipsCustom.jar
+          if-no-files-found: error
